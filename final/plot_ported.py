@@ -1,14 +1,15 @@
-import os,math,numpy,matplotlib,mlpy
+import os,math,matplotlib#,mlpy
 import matplotlib.pyplot as plt
+import numpy as np
 from datetime          import datetime
 from gwpy.plotter      import SpectrogramPlot
 from gwpy.timeseries   import TimeSeries
 from matplotlib.ticker import LogLocator
 from scipy             import fftpack,signal
-from .extract          import get_tlim
+import pywt
 
 def plot_spectrogram(data,tmin=None,tmax=None,fmin=None,fmax=None,vmin=None,vmax=None,
-                     mode='wavelet',omega0=6,dt=1,dj=0.05,fct='morlet',
+                     mode='fourier',omega0=6,dt=1,dj=0.05,fct='morlet',
                      stride=None,nfft=None,overlap=None,scale='log',
                      funit='Hz',tunit='secs',cmap='inferno',zone='Local',fname=None):
     """
@@ -66,7 +67,7 @@ def plot_spectrogram(data,tmin=None,tmax=None,fmin=None,fmax=None,vmin=None,vmax
     lowest frequency is placed at the end (bottom) of the array.
     """
     if mode=='wavelet' and scale=='linear':
-        print 'Warning: Wavelet mode chosen. Scale will be changed to log.'
+        print('Warning: Wavelet mode chosen. Scale will be changed to log.')
         scale = 'log'
     # Initialise figure
     fig = plt.figure(figsize=(24,14),frameon=False)
@@ -91,24 +92,24 @@ def plot_spectrogram(data,tmin=None,tmax=None,fmin=None,fmax=None,vmin=None,vmax
         # Calculate wavelet parameters
         scales = mlpy.wavelet.autoscales(N=len(data[mask].value),dt=dt,dj=dj,wf=fct,p=omega0)
         spec = mlpy.wavelet.cwt(data[mask].value,dt=dt,scales=scales,wf=fct,p=omega0)
-        freq = (omega0 + numpy.sqrt(2.0 + omega0 ** 2)) / (4 * numpy.pi * scales[1:])
+        freq = (omega0 + np.sqrt(2.0 + omega0 ** 2)) / (4 * np.pi * scales[1:])
         freq = freq * 1000. if funit=='mHz' else freq
-        spec = numpy.abs(spec)**2
+        spec = np.abs(spec)**2
         spec = spec[::-1]
         # Define minimum and maximum frequencies
         fmin_log,fmax_log = min(freq),max(freq)
         fmin_linear,fmax_linear = min(freq),max(freq)
         if fmin!=None:
-            log_ratio = (numpy.log10(fmin)-numpy.log10(min(freq)))/(numpy.log10(max(freq))-numpy.log10(min(freq)))
+            log_ratio = (np.log10(fmin)-np.log10(min(freq)))/(np.log10(max(freq))-np.log10(min(freq)))
             fmin_linear = min(freq)+log_ratio*(max(freq)-min(freq))
             fmin_log = fmin
         if fmax!=None:
-            log_ratio = (numpy.log10(fmax)-numpy.log10(min(freq)))/(numpy.log10(max(freq))-numpy.log10(min(freq)))
+            log_ratio = (np.log10(fmax)-np.log10(min(freq)))/(np.log10(max(freq))-np.log10(min(freq)))
             fmax_linear = min(freq)+log_ratio*(max(freq)-min(freq))
             fmax_log = fmax
         # Get minimum and maximum amplitude in selected frequency range
-        idx = numpy.where(numpy.logical_and(fmin_log<freq[::-1],freq[::-1]<fmax_log))[0]
-        vmin = vmin if vmin!=None else numpy.sort(numpy.unique(spec[idx]))[1]
+        idx = np.where(np.logical_and(fmin_log<freq[::-1],freq[::-1]<fmax_log))[0]
+        vmin = vmin if vmin!=None else np.sort(np.unique(spec[idx]))[1]
         vmax = spec[idx].max() if vmax==None else vmax
         # Plot spectrogram
         img = ax2.imshow(spec,extent=[times[0],times[-1],freq[-1],freq[0]],aspect='auto',
@@ -133,15 +134,15 @@ def plot_spectrogram(data,tmin=None,tmax=None,fmin=None,fmax=None,vmin=None,vmax
         freq, times, spec = signal.spectrogram(data[mask],fs=data.sample_rate.value,
                                            nperseg=stride,noverlap=overlap,nfft=nfft)
         # Convert time array into minute unit
-        times = (numpy.linspace(data[mask].times.value[0],data[mask].times.value[-1],len(times))-tmin)/scale_factor
+        times = (np.linspace(data[mask].times.value[0],data[mask].times.value[-1],len(times))-tmin)/scale_factor
         # Define minimum and maximum frequencies
         freq = freq * 1000. if funit=='mHz' else freq
         fmin = freq[1]      if fmin==None    else fmin
         fmax = max(freq)    if fmax==None    else fmax
         fmin_log,fmax_log = fmin,fmax
         # Get minimum and maximum amplitude in selected frequency range
-        idx = numpy.where(numpy.logical_and(fmin<=freq,freq<=fmax))[0]
-        vmin = vmin if vmin!=None else numpy.sort(numpy.unique(spec[idx]))[1]
+        idx = np.where(np.logical_and(fmin<=freq,freq<=fmax))[0]
+        vmin = vmin if vmin!=None else np.sort(np.unique(spec[idx]))[1]
         vmax = spec[idx].max() if vmax==None else vmax
         # Plot spectrogram
         img = ax2.pcolormesh(times,freq,spec,cmap=cmap,norm=matplotlib.colors.LogNorm(vmin,vmax))
@@ -156,10 +157,10 @@ def plot_spectrogram(data,tmin=None,tmax=None,fmin=None,fmax=None,vmin=None,vmax
     N = len(data[mask].value)
     delta_t = 1/data.sample_rate.value
     delta_f = 1. / (N * delta_t)
-    f = delta_f * numpy.arange(N / 2)
+    f = delta_f * np.arange(N / 2)
     f = f * 1000. if funit=='mHz' else f
-    PSD = abs(delta_t * fftpack.fft(data[mask].value)[:N / 2]) ** 2
-    psd = numpy.vstack((f,PSD)).T
+    PSD = abs(delta_t * fftpack.fft(data[mask].value)[:int(N / 2)]) ** 2
+    psd = np.vstack((f,PSD)).T
     # Plot Power Spectral Density
     ticks = matplotlib.ticker.FuncFormatter(lambda v,_:("$10^{%.0f}$"%math.log(v,10)))
     ax3.loglog(psd[:,1],psd[:,0],alpha=0.5)
@@ -246,7 +247,7 @@ def ts_movie(data,tmin=None,tmax=None,fname='time_series',zone='Local',tunit='se
     """
     t0,t1 = data.times.value[0],data.times.value[-1]
     tmin,tmax = (t0,t1) if tmin==tmax==None else get_tlim(tmin,tmax)
-    for time in numpy.arange(tmin,tmax,600):
+    for time in np.arange(tmin,tmax,600):
         t0 = datetime.utcfromtimestamp(time)
         t1 = datetime.utcfromtimestamp(time+600)
         plot_time_series(data,t0,t1,fname='video_%s'%time,zone='Local',tunit='secs')
@@ -285,8 +286,8 @@ def plot_wavelet(data,tmin=None,tmax=None,fmin=None,fmax=None,vmin=None,vmax=Non
     # Calculate wavelet parameters
     scales = mlpy.wavelet.autoscales(N=len(data[mask].value),dt=dt,dj=dj,wf=fct,p=omega0)
     spec = mlpy.wavelet.cwt(data[mask].value,dt=dt,scales=scales,wf=fct,p=omega0)
-    freq = (omega0 + numpy.sqrt(2.0 + omega0 ** 2)) / (4 * numpy.pi * scales[1:])
-    spec = numpy.abs(spec)**2
+    freq = (omega0 + np.sqrt(2.0 + omega0 ** 2)) / (4 * np.pi * scales[1:])
+    spec = np.abs(spec)**2
     spec = spec[::-1]
     # Convert time array into minute unit
     scale_factor = 3600. if tunit=='hrs' else 60. if tunit=='mins' else 1
@@ -297,15 +298,15 @@ def plot_wavelet(data,tmin=None,tmax=None,fmin=None,fmax=None,vmin=None,vmax=Non
     fmin_log,fmax_log = min(freq),max(freq)
     fmin_linear,fmax_linear = min(freq),max(freq)
     if fmin!=None:
-        log_ratio = (numpy.log10(fmin)-numpy.log10(min(freq)))/(numpy.log10(max(freq))-numpy.log10(min(freq)))
+        log_ratio = (np.log10(fmin)-np.log10(min(freq)))/(np.log10(max(freq))-np.log10(min(freq)))
         fmin_linear = min(freq)+log_ratio*(max(freq)-min(freq))
         fmin_log = fmin
     if fmax!=None:
-        log_ratio = (numpy.log10(fmax)-numpy.log10(min(freq)))/(numpy.log10(max(freq))-numpy.log10(min(freq)))
+        log_ratio = (np.log10(fmax)-np.log10(min(freq)))/(np.log10(max(freq))-np.log10(min(freq)))
         fmax_linear = min(freq)+log_ratio*(max(freq)-min(freq))
         fmax_log = fmax
     # Get minimum and maximum amplitude in selected frequency range
-    idx = numpy.where(numpy.logical_and(fmin_log<freq[::-1],freq[::-1]<fmax_log))[0]
+    idx = np.where(np.logical_and(fmin_log<freq[::-1],freq[::-1]<fmax_log))[0]
     vmin = spec[idx].min() if vmin==None else vmin
     vmax = spec[idx].max() if vmax==None else vmax
     # Initialise figure
@@ -361,9 +362,9 @@ def plot_psd(data,tmin=None,tmax=None,fname='psd',tbs=False):
     N = len(data[mask].value)
     dt = 1/data.sample_rate.value
     df = 1. / (N * dt)
-    f = df * numpy.arange(N / 2)
+    f = df * np.arange(N / 2)
     PSD = abs(dt * fftpack.fft(data[mask].value)[:N / 2]) ** 2
-    psd = numpy.vstack((f,PSD)).T
+    psd = np.vstack((f,PSD)).T
     # Do the plotting
     fig = plt.figure(figsize=(12,7))
     plt.loglog(psd[:,0],psd[:,1])
@@ -405,8 +406,8 @@ def plot_specgram(data,tmin=None,tmax=None,fmin=None,fmax=None,vmin=None,vmax=No
     fmin = freq[1]      if fmin==None    else fmin
     fmax = max(freq)    if fmax==None    else fmax
     # Get minimum and maximum amplitude in selected frequency range
-    idx = numpy.where(numpy.logical_and(fmin<=freq,freq<=fmax))[0]
-    vmin = vmin if vmin!=None else numpy.sort(numpy.unique(spec[idx]))[1]
+    idx = np.where(np.logical_and(fmin<=freq,freq<=fmax))[0]
+    vmin = vmin if vmin!=None else np.sort(np.unique(spec[idx]))[1]
     vmax = spec[idx].max() if vmax==None else vmax
     # Initialise figure
     fig,ax = plt.subplots(figsize=(12,7))
